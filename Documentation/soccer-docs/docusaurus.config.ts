@@ -58,17 +58,13 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'My Site',
+      title: 'Home',
       logo: {
-        alt: 'My Site Logo',
+        alt: 'Home',
         src: 'img/logo.svg',
+        href: '/docs/overview',
       },
       items: [
-        {
-          to: '/docs/overview',
-          label: 'Home',
-          position: 'left',
-        },
         {
           href: 'https://github.com/mickeynotmouse/Capstone-Computer-Vision-for-Soccer-Statistics',
           label: 'GitHub',
