@@ -45,7 +45,8 @@ def goal_list(games, events_by_game, kind="for"):
                 continue
             d = e["data"]
             ours, theirs = (d["attackers"], d["defenders"]) if kind == "for" else (d["defenders"], d["attackers"])
-            out.append({"game_id": g["id"], "game": g["name"], "t": e["t"], "minute": int(e["t"] // 60) + 1,
+            out.append({"id": f"{g['id']}-{e['frame']}",   # stable id the dashboard uses to select individual goals
+                        "game_id": g["id"], "game": g["name"], "t": e["t"], "minute": int(e["t"] // 60) + 1,
                         "scorer_touches": d["scorer_touches"], "buildup_passes": d["buildup_passes"],
                         "ball": d["ball"], "ours": ours, "theirs": theirs})
     return out

@@ -6,7 +6,7 @@ The window names one landmark at a time (top of the window). After 4 clicks the 
 in red and redraw after every click, so you can SEE whether the fit is right. Click as many landmarks as you can see,
 spread across the frame (4 points bunched in one corner give a shaky fit).
 
-Keys:  n = skip this landmark (not visible)   u = undo   s = save and quit   esc = cancel
+Keys:  n = skip this landmark   v = not visible in frame   u = undo   s = save and quit   esc = cancel
 
 Pitch frame: 105 x 68 m. The goal you are calibrating is at x = 105, and "near" means the touchline the CAMERA stands
 beside (y = 68). The turf may carry other sports' lines (orange/yellow): only use the soccer lines.
@@ -74,6 +74,12 @@ class Calibrator:
             self.hist.append(("skip", self.k, None))
             self.k += 1
 
+    def not_visible(self):
+        """Mark the current landmark as 'not visible in frame' (off-camera / panned out)."""
+        if self.current() is not None:
+            self.hist.append(("not_visible", self.k, None))
+            self.k += 1
+
     def undo(self):
         if self.hist:
             self.k = self.hist.pop()[1]
@@ -111,7 +117,7 @@ class Calibrator:
         l2 = (f"fit error {sol[1]:.2f} m over {len(self.pts)} points - red lines should sit on the painted lines"
               if sol else f"{len(self.pts)}/4 points before the fit appears")
         cv2.putText(view, l1, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0), 2, cv2.LINE_AA)
-        cv2.putText(view, l2 + "   [n skip | u undo | s save | esc cancel]", (10, 52), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(view, l2 + "   [n skip | v not visible | u undo | s save | esc cancel]", (10, 52), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
         return view
 
 
@@ -139,6 +145,8 @@ def main():
             raise SystemExit("cancelled")
         if key == ord("n"):
             cal.skip()
+        elif key == ord("v"):
+            cal.not_visible()
         elif key == ord("u"):
             cal.undo()
         elif key == ord("s"):
@@ -149,8 +157,10 @@ def main():
     cv2.destroyAllWindows()
 
     pts = cal.pts
+    not_visible = [k for kind, k, _ in cal.hist if kind == "not_visible"]
     json.dump({"image": [[round(p[0], 1), round(p[1], 1)] for _, p in pts],
                "pitch": [list(LANDMARKS[k][1]) for k, _ in pts],
+               "not_visible": not_visible,
                "frame": a.frame, "fit_error_m": round(cal.solve()[1], 3)}, open(a.out, "w"))
     print(f"wrote {a.out}  ({len(pts)} points, fit error {cal.solve()[1]:.2f} m)")
 

@@ -15,6 +15,13 @@ import numpy as np
 
 PERSON, BALL = 0, 32  # COCO class ids used by the pretrained YOLO weights
 
+L, W = 105.0, 68.0  # pitch dimensions in metres
+
+
+def _in_pitch(x, y, margin=3.0):
+    """True if a pitch-coordinate point is on the pitch or within `margin` metres of it."""
+    return -margin <= x <= L + margin and -margin <= y <= W + margin
+
 
 def load_homography(path):
     c = json.load(open(path))
@@ -70,12 +77,13 @@ def run(video, calib, out, model_name="yolov8m.pt", stride=1):
                 x1, y1, x2, y2 = b.xyxy[0].tolist()
                 if cls == BALL:
                     px, py = to_pitch(H, (x1 + x2) / 2, (y1 + y2) / 2)
-                    if ball is None or float(b.conf) > ball["conf"]:
+                    if _in_pitch(px, py, margin=8.0) and (ball is None or float(b.conf) > ball["conf"]):
                         ball = {"x": px, "y": py, "conf": float(b.conf)}
                 elif b.id is not None:
                     tid = int(b.id)
                     px, py = to_pitch(H, (x1 + x2) / 2, y2)  # feet = bottom-centre of box
-                    players.append({"id": tid, "x": px, "y": py})
+                    if _in_pitch(px, py):
+                        players.append({"id": tid, "x": px, "y": py})
                     if tid not in colors or n % 30 == 0:
                         colors[tid] = jersey_color(r.orig_img, (x1, y1, x2, y2)) or colors.get(tid)
         frames.append({"f": n, "t": n / fps, "players": players, "ball": ball})
