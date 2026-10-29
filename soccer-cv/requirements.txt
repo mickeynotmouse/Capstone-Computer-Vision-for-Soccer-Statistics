@@ -1,0 +1,10 @@
+# backend + tests (enough to run the dashboard on synthetic data)
+fastapi
+uvicorn
+httpx
+pytest
+
+# computer-vision side (install on the machine that processes footage)
+numpy
+opencv-python        # use opencv-python-headless on a server
+ultralytics          # YOLO + bundled ByteTrack
