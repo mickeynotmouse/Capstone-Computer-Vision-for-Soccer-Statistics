@@ -6,16 +6,23 @@ Run every command below from inside this `soccer-cv/` folder. Test videos (`*.mp
 not in the repo (too big for GitHub): keep them in this folder on your own machine; `.gitignore` stops them being committed.
 
 ```
-pipeline/track.py      YOLO + ByteTrack on a clip, jersey-colour team split, homography to pitch metres  -> tracks.json
-pipeline/calibrate.py  click pitch landmarks + spots along lines once per camera setup                     -> calib.json
+pipeline/track.py      detection + tracking on a clip, teams/keepers/officials, ball path, pitch metres   -> tracks.json
+pipeline/calibrate.py  click pitch landmarks + spots along lines once per camera mount (snaps to WHITE)    -> calib.json
+pipeline/refine.py     no clicking: move a calibration onto another clip from the same mount, snap to white -> calib.json
 pipeline/homography.py robust pixel-space fit of calib.json, held-out check and expected-error map
+pipeline/camera.py     follows the camera's pan/zoom from the background; finds the video inside a screen recording
+pipeline/lines.py      finds WHITE paint (never the red/orange/yellow lines of other sports) and snaps the fit to it
+pipeline/teams.py      shirts -> team 0 / team 1 / goalkeeper / official; spots a track that jumped between people
+pipeline/stitch.py     removes duplicate tracks, re-joins people the tracker lost (only when unambiguous)
+pipeline/ball.py       picks the one physically possible ball path; ignores balls lying still (spares, discs)
+pipeline/review.py     overlay video + stills + tracking summary, to check any of the above by eye
 pipeline/events.py     rule-based touches / passes / turnovers / shots / goals from tracks.json
 pipeline/push.py       tracks.json -> events -> POST to the backend (only structured stats are uploaded)
 pipeline/synthetic.py  FAKE matches with known ground truth (develop & test with no video)
 backend/               FastAPI + SQLite (swap for Supabase/Postgres later) + aggregation
 frontend/index.html    dashboard: tick any games, get aggregated stats + "where were we standing when a goal was scored"
 scripts/               seed_demo.py (load fake games), inspect_demo.py (check injected vs. detected, writes CSVs)
-tests/                 event detector vs. synthetic ground truth
+tests/                 event detector vs. synthetic ground truth; tracking rules on made-up data (no video needed)
 CLAUDE.md              project context for Claude Code (see below)
 ```
 
@@ -81,16 +88,52 @@ A *touch* is a run of frames in which one player is the closest to the ball (wit
 
 Passes are consecutive touches by different players of the same team; a turnover is a consecutive touch by the other team.
 
+## Real footage: calibrate, track, review
+
+```bash
+# once per camera mount: click landmarks + lines (line clicks snap to white paint; saving snaps the whole fit to it)
+python -m pipeline.calibrate wide.mp4 --width 65 --length 104 --out calib_wide.json
+# another clip from the SAME mount: no clicking, the calibration is carried over and re-snapped to the white lines
+python -m pipeline.refine goal.mp4 --from-calib calib_wide_v2.json --from-video wide.mp4 --out calib_goal_v2.json
+# tracking: a 78 s 1080p clip takes about 7 minutes on an M1 (8 GB). --work saves the camera path and detections
+# as they're made: if a run stops, the same command carries on where it was; re-tuning tracking afterwards takes seconds
+python -m pipeline.track goal.mp4 --calib calib_goal_v2.json --work work/goal --out data/goal_tracks.json
+python -m pipeline.review goal.mp4 --calib calib_goal_v2.json --tracks data/goal_tracks.json
+```
+
+The camera pans and zooms, so `track.py` follows it frame by frame from the background (trees, buildings, fences);
+the calibration only has to be right on its own frame, which can be anywhere in the clip. It reads the video in one pass
+and keeps only a small library of views, so a 45-minute half needs no more memory than a short clip.
+
+Speed: only every other frame goes through the detector (`--detect-every 2`, the default); the tracker fills in the rest.
+Measured on a 78 s clip with the same detections: about half the detection time, for ~15 % more ids (60 -> 69) and a
+little less of the ball (77 % -> 70 % of frames). Use `--detect-every 1` when that matters more than time. `refine.py` prints how much of each line sits on white paint,
+before and after: use it to check any calibration.
+
+Who is who in `tracks.json`:
+- `players` holds both teams, **including goalkeepers** (`"role": "gk"`). A keeper's team is the side defending that goal,
+  judged from where each team's players stand over the clip. If that's wrong, override it: `--keepers "105:1"` (the keeper
+  of the goal at x = 105 plays for team 1). Keepers' touches count in events.py; they are left out of the positions
+  recorded at goals, which the dashboard averages.
+- `others` holds officials (neon shirts), shown as a hollow R in the review video. Fans and people standing still on the
+  touchline (coaches, substitutes) are dropped.
+- Team 0 is always the lighter shirt.
+
 ## Known simplifications (the to-do list for real footage)
 
 - A first-time pass that sends the ball on in the *same direction at the same speed* looks identical to a fly-by and is missed;
   a first-time pass within ~0.3 s of the previous touch is also skipped (the measurement windows overlap).
-- Ball detection from a wide angle will drop frames; expect to add ball interpolation/smoothing and re-tune the thresholds.
+- The ball is seen in about 25-30 % of frames on the test clips (plus short gaps filled in). A ball lying still is ignored
+  (on the test clips those were spare balls and a disc), so a dead ball is only picked up once it's kicked. A ball in
+  the air is placed where it would be on the ground, so lofted balls look faster and further than they are.
 - A "touch" is an unbroken run, so a dribble counts as one touch.
 - Goals are judged by where the ball crosses the goal line; own goals are credited to the last toucher's team.
-- Referees and goalkeepers can pollute the 2-cluster jersey split (add a third cluster / goalkeeper rule).
-- Tracker ID switches will split one player into two ids.
-- A fixed camera is assumed (one homography per game); a panning camera needs per-frame calibration.
+- Shirt rules are tuned on one match (white v maroon stripes, neon officials, yellow keeper) and need checking on others.
+- When two players cross, the tracker can swap them. A swap between TEAMS is caught (the shirt changes) and the track is
+  cut; a swap between two players of the same team is not.
+- The calibration and line snapping only know the half with the goal at x = 105; a camera that pans to the other half
+  needs the other half's lines added.
+- Detections, tracking and stats only exist for the part of the pitch in view, so averages favour where the camera points.
 - Dashboard is plain HTML/JS for speed; port to React + TypeScript per the proposal once the data model settles.
 
 ## Working on this with Claude Code in VS Code

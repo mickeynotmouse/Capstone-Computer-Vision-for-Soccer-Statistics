@@ -6,6 +6,9 @@ The window names one item at a time (top of the window). Two kinds:
   POINTS  click the landmark itself (a corner, a spot). Clicking moves on to the next item.
   LINES   click as many spots as you like ALONG that painted line (anywhere: no need to find a corner), then press n.
           Lines are the easiest thing to click accurately and are rarely hidden by players: use them.
+          Each line click snaps onto the WHITE paint under it. If there is none there, the click is kept as it is and the
+          terminal warns you (u undoes it): this turf also has red, orange and yellow lines for other sports, and only the
+          white ones are soccer lines. Faded or shaded white paint may not be found; then a careful click still counts.
 
 A magnifier in the top corner shows the full-resolution picture under the mouse; the centre of its red crosshair is
 exactly where the click lands. If you can't SEE a corner (hidden by a player, too far away), press v rather than
@@ -33,6 +36,7 @@ import cv2
 import numpy as np
 
 from . import homography as hg
+from . import lines as paint
 from .review import pitch_lines, poly
 
 ARC_Y = float(np.sqrt(9.15 ** 2 - 5.5 ** 2))   # the penalty arc meets the 18-yd box line this far either side of centre
@@ -82,7 +86,8 @@ LANDMARKS = landmarks()   # replaced in main() when --width / --length are given
 
 def read_frame(path, index=0):
     cap = cv2.VideoCapture(path)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, index)
+    for _ in range(index):      # step through rather than seek: seeking is unreliable on variable-frame-rate recordings
+        cap.grab()
     ok, img = cap.read()
     cap.release()
     if not ok:
@@ -106,6 +111,8 @@ class Calibrator:
         self._cache = {}
         self.mouse = None       # display pixel under the mouse, for the magnifier
         self.padded = cv2.copyMakeBorder(frame, 36, 36, 36, 36, cv2.BORDER_CONSTANT)   # = the magnifier's `half`
+        self.white = paint.whiteness(frame)
+        self.frame = frame
 
     def _clicks(self, kind):
         return [(k, p) for kind_, k, p in self.hist if kind_ == "click" and LANDMARKS[k][1] == kind]
@@ -122,10 +129,20 @@ class Calibrator:
         return LANDMARKS[self.k] if self.k < len(LANDMARKS) else None
 
     def click(self, x, y):
-        if self.current() is not None:
-            self.hist.append(("click", self.k, (x / self.s, y / self.s)))
-            if self.current()[1] == "point":   # a line takes as many clicks as you like; n moves on
-                self.k += 1
+        """-> "snapped" (a line click moved onto white paint), "no paint" (a line click with no white paint near it: kept
+        as clicked), "point", or None if there is nothing left to click."""
+        if self.current() is None:
+            return None
+        px, py = x / self.s, y / self.s
+        status = "point"
+        if self.current()[1] == "line":
+            snapped = paint.snap(self.white, px, py, radius=max(6.0, 8 / self.s))
+            status = "no paint" if snapped is None else "snapped"
+            px, py = snapped or (px, py)
+        self.hist.append(("click", self.k, (px, py)))
+        if self.current()[1] == "point":   # a line takes as many clicks as you like; n moves on
+            self.k += 1
+        return status
 
     def skip(self):
         if self.current() is not None:
@@ -246,10 +263,22 @@ class Calibrator:
                 "line_pitch": [list(LANDMARKS[k][2]) for k, _ in self.line_pts],
                 "not_visible": [k for kind, k, _ in self.hist if kind == "not_visible"],
                 "frame": frame_index, "frame_size": list(self.size), "pitch_width": width, "pitch_length": length,
+                "H": (sol["H"] / np.linalg.norm(sol["H"])).tolist(),
                 "fit_rms_px": round(sol["rms_px"], 2),
                 "held_out_worst_m": round(float(loo.max()), 3) if len(loo) else None,
                 "expected_error_m": {"median": round(float(np.nanmedian(sol["err_m"])), 3),
                                      "p90": round(float(np.nanpercentile(sol["err_m"], 90)), 3)}}
+
+
+def _line_items(px, coeffs):
+    """Pair automatically found line spots with the LANDMARKS line item they lie on -> [(item index, pixel)]."""
+    items = {tuple(np.round(v, 6)): k for k, (_, kind, v) in enumerate(LANDMARKS) if kind == "line"}
+    out = []
+    for p, c in zip(px, coeffs):
+        k = items.get(tuple(np.round(c, 6)))
+        if k is not None:
+            out.append((k, (float(p[0]), float(p[1]))))
+    return out
 
 
 def main():
@@ -268,8 +297,10 @@ def main():
         cal.mouse = (x, y)
         if ev == cv2.EVENT_LBUTTONDOWN and cal.current():
             name = cal.current()[0]
-            cal.click(x, y)
-            print(f"{len(cal.hist):2d}. {name}: pixel ({x / cal.s:.0f}, {y / cal.s:.0f})")
+            status = cal.click(x, y)
+            px, py = cal.hist[-1][2]
+            print(f"{len(cal.hist):2d}. {name}: pixel ({px:.0f}, {py:.0f})"
+                  + ("   <- no WHITE paint here: is this a coloured line? (u = undo)" if status == "no paint" else ""))
 
     cv2.namedWindow("calibrate")
     cv2.setMouseCallback("calibrate", on_click)
@@ -295,6 +326,12 @@ def main():
             break
     cv2.destroyAllWindows()
 
+    # finish by snapping the fit onto all the white paint it can find (kept only if it fits the paint better)
+    sol = cal.solve()
+    H, obs, used = paint.refine(cal.frame, cal.obs(), sol["H"], a.width, a.length)
+    if used:
+        cal.hist += [("click", k, tuple(p)) for k, p in _line_items(obs.lpx[len(cal.line_pts):], obs.lco[len(cal.line_pts):])]
+        print("snapped the fit to white paint on: " + ", ".join(f"{k} ({v} spots)" for k, v in used.items()))
     out = cal.to_json(a.frame, a.width, a.length)
     json.dump(out, open(a.out, "w"))
     print(f"wrote {a.out}  ({len(out['image'])} points + {len(out['line_image'])} line clicks)\n"

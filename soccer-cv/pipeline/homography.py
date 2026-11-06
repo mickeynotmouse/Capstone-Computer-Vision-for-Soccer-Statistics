@@ -120,8 +120,18 @@ def residuals_px(H, obs):
 
 
 def fit(obs, init=None, iters=50):
-    """Robust pixel-space fit -> image->pitch H (3x3), or None if the clicks don't pin it down."""
-    H0 = dlt(obs) if init is None else init
+    """Robust pixel-space fit -> image->pitch H (3x3), or None if the clicks don't pin it down.
+    With no starting point, starts from a linear solve of everything; if that lands on a flipped pitch (it can, with
+    hundreds of automatically found line spots), starts again from the clicked points alone."""
+    if init is None:
+        H = _fit(obs, dlt(obs), iters)
+        if H is None and len(obs.pts) >= 4:
+            H = _fit(obs, dlt(Obs(obs.pts, obs.pit)), iters)
+        return H
+    return _fit(obs, init, iters)
+
+
+def _fit(obs, H0, iters):
     if H0 is None:
         return None
     Ti = _img_norm(np.r_[obs.pts, obs.lpx])
@@ -206,9 +216,11 @@ def error_map(obs, H, px, sigma=CLICK_NOISE_PX, trials=40, fitter=None, seed=0):
 
 
 def load(path):
-    """calib.json -> image->pitch H, using every point and line click in the file."""
-    obs = Obs.from_calib(json.load(open(path)))
-    H = fit(obs)
+    """calib.json -> image->pitch H, using every point and line click in the file (starting from the fit saved in the
+    file, when there is one, so loading always gives back the calibration that was checked when it was saved)."""
+    c = json.load(open(path))
+    obs = Obs.from_calib(c)
+    H = fit(obs, init=np.array(c["H"]) if "H" in c else None)
     if H is None:
         raise SystemExit(f"{path}: these clicks don't pin down the pitch; re-run pipeline.calibrate")
     return H
