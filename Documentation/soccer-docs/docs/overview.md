@@ -120,3 +120,5 @@ These are the current plans. They may change as the project progresses, and chan
 ## Where to Go Next
 
 - [Architecture](./architecture.md): components, data flow, and wireframes
+- [Pitch Calibration](./calibration.md): turning pixels into metres on the pitch, and how accurate it is
+- [Detection Model Experiments](./detection-experiments.md): soccer-specific models vs. the current detector, measured on our own footage

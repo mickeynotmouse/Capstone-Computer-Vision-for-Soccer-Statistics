@@ -1,6 +1,7 @@
 """Step 2: turn per-frame pitch-coordinate tracks into soccer events.
 
-Input  : the JSON written by pipeline.track  {"fps": .., "frames": [{"t", "players": [{id,x,y,team}], "ball": {x,y}|None}]}
+Input  : the JSON written by pipeline.track  {"fps": .., "frames": [{"t", "players": [{id,x,y,team,role?}], "ball": {x,y}|None}]}
+         role "gk" marks a goalkeeper: their touches count, but they're left out of the positions recorded at a goal.
 Output : a flat list of events (touch-based passes, turnovers, shots, goals) ready to store in the DB.
 
 Pitch coordinates are metres, 105 x 68, origin top-left. Everything here is deliberately simple,
@@ -234,7 +235,9 @@ def detect(tracks):
                           scorer_touches=sum(1 for c in chain if c["player"] == tch["player"]),
                           buildup_passes=len(chain) - 1,
                           ball=[round(min(bx, L), 1), round(by, 1)],
-                          attackers=[flip(p) for p in fr["players"] if p["team"] == team],
-                          defenders=[flip(p) for p in fr["players"] if p["team"] != team and p["team"] >= 0]))
+                          # outfield players only: the dashboard averages these, and a keeper would drag every average
+                          attackers=[flip(p) for p in fr["players"] if p["team"] == team and p.get("role") != "gk"],
+                          defenders=[flip(p) for p in fr["players"]
+                                     if p["team"] != team and p["team"] >= 0 and p.get("role") != "gk"]))
 
     return sorted(events, key=lambda e: e["frame"])
