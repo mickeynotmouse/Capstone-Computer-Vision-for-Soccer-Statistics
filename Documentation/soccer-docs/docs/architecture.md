@@ -1,4 +1,5 @@
 ---
+sidebar_position: 2
 title: Architecture
 description: High-level overview of the project's architecture and components.
 ---
