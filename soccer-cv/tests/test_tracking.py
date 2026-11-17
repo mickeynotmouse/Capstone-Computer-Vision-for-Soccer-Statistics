@@ -294,3 +294,11 @@ def test_stitching_thousands_of_tracks_is_quick():
     stitch.stitch(tracks, FPS)
     stitch.remove_duplicates(tracks)
     assert time.time() - t < 20
+
+
+def test_coreml_input_size_matches_the_picture():
+    from pipeline import track
+    assert track.coreml_shape(2880, 1620, 1920) == (1088, 1920)   # Mac screen recording, picture cropped to 16:9
+    assert track.coreml_shape(1920, 1080, 1920) == (1088, 1920)
+    h, w = track.coreml_shape(1440, 1080, 1920)                    # 4:3
+    assert w == 1920 and h % 32 == 0 and h >= 1440

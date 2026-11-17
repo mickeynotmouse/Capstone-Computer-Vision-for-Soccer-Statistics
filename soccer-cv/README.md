@@ -67,6 +67,20 @@ python -m pipeline.push data/g1_tracks.json --opponent Linfield --venue H --date
 Game names are built for you: home → `vs. Linfield (H)`, away → `at Pacific (A)`.
 `--our-team` is which jersey cluster (0/1) is Willamette – check a few track ids against the video the first time.
 
+## Faster detection with Core ML (optional)
+
+On an Apple Silicon Mac, `--coreml` runs the detector on the Neural Engine: same accuracy, detection about 1.6x faster
+(whole pipeline about 25 % faster, Nov 2026 test on `wide.mp4`). It is OFF unless you add the flag. It needs its own
+Python 3.12 environment, because coremltools doesn't work on Python 3.14 yet (setup: top of `requirements-coreml.txt`).
+
+```bash
+../.venv-coreml/bin/python -m pipeline.track clip.mp4 --calib calib.json --out data/g1_tracks.json --coreml   # on
+python -m pipeline.track clip.mp4 --calib calib.json --out data/g1_tracks.json                                # off
+```
+
+The first run converts the model (about 15 s) and keeps it next to the weights as `yolov8m_<h>x<w>.mlpackage`.
+Everything else (`push`, the backend, the tests) keeps using the normal environment.
+
 ## What is verified vs. not
 
 | Part | Status |
