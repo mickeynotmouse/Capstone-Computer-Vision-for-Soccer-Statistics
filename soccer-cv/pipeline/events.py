@@ -22,6 +22,7 @@ MIN_RUN_S = 0.3        # s on the ball for a *controlled* touch; shorter contact
 WINDOW_S = 0.3         # s either side of a touch used to measure how the ball's velocity changed
 MERGE_GAP_S = 1.0      # same player re-touching within this gap is merged into one touch
 DEAD_BALL_S = 5.0      # gap between touches above which play is considered stopped
+DEFLECT_S = 0.5        # s: a shorter touch by one team, between two touches by the other, is a deflection (see _deflections)
 CONTROL_SPEED = 5.0    # m/s: a ball that stays with a player (net speed over the run) is under control
 CHANGE_V = 5.0         # m/s: a velocity change this large across the run means the player actually played the ball
 SHOT_SPEED = 16.0      # m/s ball speed right after the touch
@@ -170,6 +171,23 @@ def _ev(frames, i, etype, team, player, **data):
             "team": team, "player": player, "data": data}
 
 
+def _deflections(frames, touches):
+    """Indices of touches that are only deflections: shorter than DEFLECT_S, by one team, with the OTHER team on the
+    ball right before and right after (play not stopped in between). The ball never really changed teams, so this is
+    neither two turnovers nor a pass between the touches either side (the pass wasn't meant for whoever got it):
+    no pass or turnover is counted across it. Often it isn't even a touch, just the ball flying past an opponent,
+    or its guessed position between sightings lying near one. Shots and goals still see every touch."""
+    out = set()
+    for i in range(1, len(touches) - 1):
+        a, t, b = touches[i - 1], touches[i], touches[i + 1]
+        if (a["team"] == b["team"] != t["team"]
+                and frames[t["i1"]]["t"] - frames[t["i0"]]["t"] < DEFLECT_S
+                and frames[t["i0"]]["t"] - frames[a["i1"]]["t"] <= DEAD_BALL_S
+                and frames[b["i0"]]["t"] - frames[t["i1"]]["t"] <= DEAD_BALL_S):
+            out.add(i)
+    return out
+
+
 def detect(tracks):
     frames = tracks["frames"]
     dt = (frames[1]["t"] - frames[0]["t"]) if len(frames) > 1 else 0.1
@@ -177,8 +195,12 @@ def detect(tracks):
     touches = find_touches(frames, k)
     events = []
 
-    # passes and turnovers: consecutive touches with the ball in play between them
-    for a, b in zip(touches, touches[1:]):
+    # passes and turnovers: consecutive touches with the ball in play between them. Across a deflection (an
+    # opponent's brief touch, see _deflections) nothing is counted: the ball never really changed teams.
+    deflected = _deflections(frames, touches)
+    for n, (a, b) in enumerate(zip(touches, touches[1:])):
+        if n in deflected or n + 1 in deflected:
+            continue
         if frames[b["i0"]]["t"] - frames[a["i1"]]["t"] > DEAD_BALL_S:
             continue
         ba, bb = frames[a["i1"]]["ball"], frames[b["i0"]]["ball"]

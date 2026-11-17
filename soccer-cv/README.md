@@ -104,6 +104,9 @@ A *touch* is a run of frames in which one player is the closest to the ball (wit
 - All thresholds are in seconds (not frames), so they behave the same at 10, 25 or 30 fps. They are constants at the top of `events.py`.
 
 Passes are consecutive touches by different players of the same team; a turnover is a consecutive touch by the other team.
+A **deflection** – a touch shorter than 0.5 s by one team, with the other team on the ball right before and after – counts
+as neither: no turnovers, and no pass across it (it wasn't meant for whoever got it). On `test.mp4` this took the false
+turnovers from 8 to 2 without losing a real event (`scripts/score_events.py`, Nov 2026).
 
 ## Real footage: calibrate, track, review
 
