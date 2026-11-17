@@ -17,7 +17,8 @@ The team is the one that passed / lost the ball / shot / scored. What counts:
     answer, even if the pipeline counts each bounce, so the score shows whether it does. Likewise a pass that an
     opponent touches or deflects but that still ends up with the passer's team: log nothing (not a pass, as it
     wasn't meant for that player; not a turnover, as the ball never changed teams).
-    shot / goal   an attempt on goal / a goal (log the shot too).
+    shot / goal   an attempt on goal / a goal. A goal is BOTH: S at the kick, then G when the ball CROSSES THE
+                  LINE (the pipeline times goals from the crossing, not the kick).
 Space play/pause   <- -> 1 s (shift: 5 s)   , . one frame   down/up arrow slower/faster   Backspace delete the last event.
 Click an event in the list to watch it again.
 
@@ -199,7 +200,8 @@ PAGE = r"""<!doctype html>
       Ball out of play is not a turnover.<br>
       <b>Each time the ball goes to the next player:</b> a teammate = pass, an opponent = turnover, by the team
       that had it. A failed pass is only a turnover; a tackle that sets up a teammate is a turnover, then a pass.
-      Always press when the ball LEAVES the player who had it (the kick, not the interception). A scramble where the
+      Always press when the ball LEAVES the player who had it (the kick, not the interception), except
+      <b>G: when the ball crosses the goal line</b> (a goal is S at the kick, then G). A scramble where the
       ball bounces between the teams: one turnover at its start, and only if the other team comes out with it.
       A pass deflected by an opponent that still reaches the passer's team: log nothing.<br>
       <kbd>Space</kbd> play <kbd>&larr;</kbd><kbd>&rarr;</kbd> 1 s (shift 5 s) <kbd>,</kbd><kbd>.</kbd> frame
