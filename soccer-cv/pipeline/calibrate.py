@@ -27,7 +27,8 @@ Keys:  n = skip / next line   v = not visible in frame   u = undo   l = red pitc
        s = save and quit   esc = cancel
 
 Pitch frame: the goal you are calibrating is at x = 105, the halfway line at x = 105 - length/2, and "near" means
-the touchline the CAMERA stands beside (y = 34 + width/2). The turf may carry other sports' lines: only use the soccer lines.
+the touchline the CAMERA stands beside (y = 34 + width/2). If that goal is on the camera's LEFT, this would draw the
+pitch map as a mirror image, so the file is saved with near and far swapped (homography.is_mirrored). The turf may carry other sports' lines: only use the soccer lines.
 """
 import argparse
 import json
@@ -257,13 +258,15 @@ class Calibrator:
         sol = self.solve()
         loo = sol["loo_m"][np.isfinite(sol["loo_m"])]
         r = lambda p: [round(p[0], 1), round(p[1], 1)]   # noqa: E731
+        # goal on the camera's left: save with near and far swapped, so the pitch map isn't a mirror image
+        obs, H, _ = hg.unmirror(self.obs(), sol["H"])
         return {"image": [r(p) for _, p in self.pts],
-                "pitch": [list(LANDMARKS[k][2]) for k, _ in self.pts],
+                "pitch": obs.pit.tolist(),
                 "line_image": [r(p) for _, p in self.line_pts],
-                "line_pitch": [list(LANDMARKS[k][2]) for k, _ in self.line_pts],
+                "line_pitch": obs.lco.tolist(),
                 "not_visible": [k for kind, k, _ in self.hist if kind == "not_visible"],
                 "frame": frame_index, "frame_size": list(self.size), "pitch_width": width, "pitch_length": length,
-                "H": (sol["H"] / np.linalg.norm(sol["H"])).tolist(),
+                "H": (H / np.linalg.norm(H)).tolist(),
                 "fit_rms_px": round(sol["rms_px"], 2),
                 "held_out_worst_m": round(float(loo.max()), 3) if len(loo) else None,
                 "expected_error_m": {"median": round(float(np.nanmedian(sol["err_m"])), 3),

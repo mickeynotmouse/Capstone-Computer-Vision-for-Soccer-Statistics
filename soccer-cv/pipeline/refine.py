@@ -69,6 +69,7 @@ def main():
     H0 = hg.fit(obs)
     if H0 is None:
         raise SystemExit("too few clicks are visible in this frame to start from")
+    obs, H0, _ = hg.unmirror(obs, H0)   # a source file made before mirror images were caught (homography.is_mirrored)
 
     print_alignment("before", lines.alignment(frame, H0, width, length, box))
     H, full, used = lines.refine(frame, obs, H0, width, length, box)

@@ -7,15 +7,17 @@ import numpy as np
 
 from pipeline import calibrate, homography as hg
 
-# a camera beside the near touchline looking at the right-hand goal (pitch -> image), roughly like the test clips
+# a made-up camera (pitch -> image) for the fitting maths. It shows the pitch as a mirror image, which no real camera
+# can: fine for the arithmetic, but the tests that care which way round the pitch is use H_REAL, its unmirrored twin.
 G_TRUE = np.array([[-12.0, 30.0, 1800.0], [1.5, 6.0, 300.0], [-0.002, 0.012, 1.0]])
 H_TRUE = np.linalg.inv(G_TRUE)
+H_REAL = np.linalg.inv(G_TRUE @ hg.MIRROR)
 PTS = np.array([[105, 68], [105, 37.66], [94, 34], [88.5, 54.16], [99.5, 24.84], [88.5, 13.84], [52.5, 68], [52.5, 34]])
 
 
-def _close(H, at=((60, 60), (80, 40), (100, 20)), tol=1e-6):
-    at = np.float64(at)
-    return np.abs(hg.to_pitch(H, hg.to_image(H_TRUE, at)) - at).max() < tol
+def _close(H, at=((60, 60), (80, 40), (100, 20)), tol=1e-6, ref=None):
+    at, ref = np.float64(at), H_TRUE if ref is None else ref
+    return np.abs(hg.to_pitch(H, hg.to_image(ref, at)) - at).max() < tol
 
 
 def test_exact_recovery_points_and_lines():
@@ -79,10 +81,10 @@ def test_calibrator_flow_and_saved_file_round_trip(tmp_path):
     near_tl = next(i for i, (_, kind, v) in enumerate(calibrate.LANDMARKS) if kind == "line" and v == hg.line("y", 68))
     while cal.current() is not None:
         if cal.k in clicks:
-            cal.click(*hg.to_image(H_TRUE, np.float64([clicks[cal.k]]))[0] * cal.s)
+            cal.click(*hg.to_image(H_REAL, np.float64([clicks[cal.k]]))[0] * cal.s)
         elif cal.k == near_tl:
             for x in (60, 75, 90):
-                cal.click(*hg.to_image(H_TRUE, np.float64([[x, 68]]))[0] * cal.s)
+                cal.click(*hg.to_image(H_REAL, np.float64([[x, 68]]))[0] * cal.s)
             assert cal.k == near_tl                     # line clicks don't advance
             cal.skip()
         else:
@@ -95,9 +97,32 @@ def test_calibrator_flow_and_saved_file_round_trip(tmp_path):
     saved = json.load(open(path))
     assert saved["line_pitch"] == [hg.line("y", 68)] * 3
     assert saved["fit_rms_px"] < 0.2                    # only rounding of the saved pixels
-    assert _close(hg.load(path), tol=0.05)
+    assert _close(hg.load(path), tol=0.05, ref=H_REAL)
 
 
 def test_old_calibration_files_still_load():
     assert hg.load("calib.json").shape == (3, 3)
     assert hg.load("calib_wide.json").shape == (3, 3)
+
+
+def test_goal_on_the_cameras_left_is_not_drawn_as_a_mirror_image(tmp_path):
+    """The clicking tool always calls the calibrated goal x = 105 and the camera's touchline y = 68. With the goal on
+    the camera's left that labels the picture back to front: the fit is perfect but the pitch map is a mirror image.
+    The same clicks with near and far swapped must give back the real, unmirrored camera."""
+    lines = np.array([[70, 68], [60, 68], [52.5, 50], [100, 13.84]])
+    true = hg.Obs(hg.to_image(H_REAL, PTS), PTS, hg.to_image(H_REAL, lines),
+                  [hg.line("y", 68)] * 2 + [hg.line("x", 52.5), hg.line("y", 13.84)])
+    assert not hg.is_mirrored(hg.fit(true), true.pts)
+    assert hg.unmirror(true, hg.fit(true))[2] is False         # a correct calibration is left alone
+
+    labelled = hg.mirror(true)                                  # what the tool saves for a goal on the left
+    H = hg.fit(labelled)
+    assert hg.residuals_px(H, labelled).max() < 1e-6 and hg.is_mirrored(H, labelled.pts)
+    fixed, H2, flipped = hg.unmirror(labelled, H)
+    assert flipped and _close(H2, ref=H_REAL)
+    assert np.allclose(fixed.pit, true.pit) and np.allclose(fixed.lco, true.lco)
+
+    path = tmp_path / "calib.json"                               # files saved before the fix are repaired on load
+    json.dump({"image": labelled.pts.tolist(), "pitch": labelled.pit.tolist(), "line_image": labelled.lpx.tolist(),
+               "line_pitch": labelled.lco.tolist(), "H": H.tolist()}, open(path, "w"))
+    assert _close(hg.load(str(path)), tol=1e-4, ref=H_REAL)
