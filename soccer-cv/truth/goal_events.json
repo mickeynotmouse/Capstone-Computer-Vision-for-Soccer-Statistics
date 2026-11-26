@@ -1,0 +1,30 @@
+{
+ "video": "goal.mp4",
+ "teams": {
+  "0": "light shirts",
+  "1": "dark shirts"
+ },
+ "reviewed_until": 7.38,
+ "events": [
+  {
+   "t": 1.56,
+   "type": "pass",
+   "team": 0
+  },
+  {
+   "t": 5.08,
+   "type": "pass",
+   "team": 0
+  },
+  {
+   "t": 5.92,
+   "type": "shot",
+   "team": 0
+  },
+  {
+   "t": 6.6,
+   "type": "goal",
+   "team": 0
+  }
+ ]
+}

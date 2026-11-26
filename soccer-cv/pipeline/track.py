@@ -106,14 +106,46 @@ def best_device():
     return "cpu"
 
 
+def coreml_shape(content_w, content_h, imgsz=IMGSZ):
+    """A Core ML model takes ONE fixed input size: (height, width) matching this video's picture, long side `imgsz`,
+    both rounded up to a multiple of 32 as YOLO needs. 2880 x 1620 at 1920 -> (1088, 1920)."""
+    s = imgsz / max(content_w, content_h)
+    return tuple(int(-(-round(v * s) // 32) * 32) for v in (content_h, content_w))
+
+
+def coreml_model(model_name, shape):
+    """Path to the Core ML version of `model_name` at this input size, converted on first use (about 15 s) and kept
+    next to the weights as <name>_<h>x<w>.mlpackage. Core ML runs YOLO on the Mac's Neural Engine: in a test on our
+    footage (Nov 2026) detection was 1.6x faster with the same accuracy. Needs the Python 3.12 environment
+    .venv-coreml (requirements-coreml.txt): coremltools has no Python 3.14 build yet."""
+    import importlib.util
+    import os
+    import sys
+    from pathlib import Path
+
+    if sys.version_info >= (3, 14) or importlib.util.find_spec("coremltools") is None:
+        raise SystemExit("--coreml needs the Core ML environment: run this command with ../.venv-coreml/bin/python "
+                         "instead of python (README: 'Faster detection with Core ML')")
+    h, w = shape
+    p = Path(model_name)
+    target = p.with_name(f"{p.stem}_{h}x{w}.mlpackage")
+    if not target.exists():
+        from ultralytics import YOLO
+        print(f"  converting {model_name} to Core ML at {w}x{h} (only the first time) ...", flush=True)
+        made = YOLO(model_name).export(format="coreml", imgsz=(h, w), half=True)
+        os.replace(made, target)
+    return str(target)
+
+
 def detect(video, path=None, H=None, width=W, length=L, model_name="yolov8m.pt", imgsz=IMGSZ, device=None,
-           every=DETECT_EVERY, work=None):
+           every=DETECT_EVERY, work=None, coreml=False):
     """-> (per-frame detections, fps, repeats). Each entry is an array [x1, y1, x2, y2, conf, cls] in video pixels, or None
     for a frame that wasn't looked at (only every `every`-th frame is). Black (buffering) frames get an empty array.
     With the camera path and calibration, only the rows that can hold the pitch are looked at. A frame that repeats the
     previous one (screen recordings) reuses its detections; `repeats` counts them.
     work: a folder to save detections in, CHUNK_FRAMES at a time. Chunks already there are loaded rather than redone,
-    so a run that stops part-way (a crash, a closed laptop, a Colab disconnect) carries on where it was."""
+    so a run that stops part-way (a crash, a closed laptop, a Colab disconnect) carries on where it was.
+    coreml: run the Core ML version of the model (see coreml_model) instead of PyTorch."""
     import os
 
     model, cap = None, cv2.VideoCapture(video)
@@ -153,8 +185,13 @@ def detect(video, path=None, H=None, width=W, length=L, model_name="yolov8m.pt",
             else:
                 if model is None:
                     from ultralytics import YOLO  # imported lazily so the rest of the package works without it
-                    model, device = YOLO(model_name), device or best_device()
-                    print(f"  running the detector on {device}", flush=True)
+                    if coreml:              # one fixed input size, from this video's picture (the pitch rows are padded)
+                        imgsz = coreml_shape(x1 - x0, y1 - y0, imgsz)
+                        model, device = YOLO(coreml_model(model_name, imgsz), task="detect"), "cpu"
+                        print(f"  running the detector with Core ML at {imgsz[1]}x{imgsz[0]}", flush=True)
+                    else:
+                        model, device = YOLO(model_name), device or best_device()
+                        print(f"  running the detector on {device}", flush=True)
                 if path is not None and H is not None and n < len(path):
                     y0, y1 = pitch_rows(H @ path[n], width, length, box)
                 r = model.predict(frame[y0:y1, x0:x1], classes=[PERSON, BALL], conf=DET_CONF, iou=DET_IOU, imgsz=imgsz,
@@ -359,7 +396,7 @@ def to_frames(players, others, ball, total, fps):
 
 
 def run(video, calib, out, model_name="yolov8m.pt", stride=1, imgsz=IMGSZ, work=None, device=None, keepers=None,
-        every=DETECT_EVERY):
+        every=DETECT_EVERY, coreml=False):
     import os
     import time
 
@@ -368,11 +405,17 @@ def run(video, calib, out, model_name="yolov8m.pt", stride=1, imgsz=IMGSZ, work=
     t0 = time.time()
     if work:
         os.makedirs(work, exist_ok=True)
-        stamp = {"video": os.path.abspath(video), "size": os.path.getsize(video), "calib_frame": ref_frame,
+        # the video by file name + size, not its full path: moving the project folder mustn't invalidate saved work
+        stamp = {"video": os.path.basename(video), "size": os.path.getsize(video), "calib_frame": ref_frame,
                  "model": model_name, "imgsz": imgsz, "every": every}
+        if coreml:
+            stamp["coreml"] = True
         old = os.path.join(work, "run.json")
-        if os.path.exists(old) and json.load(open(old)) != stamp:
-            raise SystemExit(f"{work} holds work from a different video or settings: use another --work folder")
+        if os.path.exists(old):
+            prev = json.load(open(old))
+            prev["video"] = os.path.basename(prev.get("video", ""))   # work saved before Nov 2026 kept the full path
+            if prev != stamp:
+                raise SystemExit(f"{work} holds work from a different video or settings: use another --work folder")
         json.dump(stamp, open(old, "w"))
 
     path_file = os.path.join(work, "camera_path.npz") if work else None
@@ -388,7 +431,7 @@ def run(video, calib, out, model_name="yolov8m.pt", stride=1, imgsz=IMGSZ, work=
     t1 = time.time()
 
     print("detecting ...", flush=True)
-    dets, fps, repeats = detect(video, path, H, width, length, model_name, imgsz, device, every, work)
+    dets, fps, repeats = detect(video, path, H, width, length, model_name, imgsz, device, every, work, coreml)
     if repeats:
         print(f"  {repeats} frames repeated the one before and were not detected again")
     t2 = time.time()
@@ -405,7 +448,7 @@ def run(video, calib, out, model_name="yolov8m.pt", stride=1, imgsz=IMGSZ, work=
     meta = {"pitch_width": width, "pitch_length": length,
             "team_colours_lab": {k: np.round(v, 1).tolist() for k, v in centres.items()},
             "keepers": {int(t.id): int(t.team) for t in players if t.role == "gk"},
-            "raw_track_ids": len(raw), "detect_every": every,
+            "raw_track_ids": len(raw), "detect_every": every, "coreml": coreml,
             "seconds": {"camera": round(t1 - t0, 1), "detect": round(t2 - t1, 1), "track": round(t3 - t2, 1)},
             "camera_to_ref": np.round(path.to_ref.reshape(len(path), 9), 7).tolist()}
     json.dump({"fps": fps, "meta": meta, "frames": frames[::stride]}, open(out, "w"))
@@ -426,8 +469,10 @@ if __name__ == "__main__":
     ap.add_argument("--detect-every", type=int, default=DETECT_EVERY,
                     help="look at every n-th frame (default 2; 1 = every frame, slower, a little more of the ball)")
     ap.add_argument("--device", help="mps, cpu, cuda:0 ...; default: the fastest one available")
+    ap.add_argument("--coreml", action="store_true",
+                    help="detect with Core ML on the Mac's Neural Engine (faster, same accuracy); needs .venv-coreml")
     ap.add_argument("--keepers", help='whose keeper is whose, if the automatic call is wrong: "105:1" = the keeper of the '
                                       'goal at x=105 plays for team 1; for both goals "105:1,0:0"')
     a = ap.parse_args()
     kt = {float(g): int(t) for g, t in (p.split(":") for p in a.keepers.split(","))} if a.keepers else None
-    run(a.video, a.calib, a.out, a.model, a.stride, a.imgsz, a.work, a.device, kt, a.detect_every)
+    run(a.video, a.calib, a.out, a.model, a.stride, a.imgsz, a.work, a.device, kt, a.detect_every, a.coreml)

@@ -1,0 +1,12 @@
+# Faster detection with Core ML (Apple Silicon Macs): `python -m pipeline.track ... --coreml`.
+# Needs Python 3.12, because coremltools has no Python 3.14 build yet. From the poc/ folder:
+#   /opt/homebrew/bin/python3.12 -m venv .venv-coreml
+#   .venv-coreml/bin/python -m pip install -r soccer-cv/requirements-coreml.txt
+# Versions match the main environment's ultralytics; torch 2.7 is the newest coremltools is tested with.
+numpy
+opencv-python
+torch==2.7.0
+torchvision==0.22.0
+ultralytics==8.4.184
+coremltools
+lap

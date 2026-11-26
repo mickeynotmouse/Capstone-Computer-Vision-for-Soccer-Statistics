@@ -72,6 +72,36 @@ def to_pitch(H, px):
     return q[:, :2] / q[:, 2:]
 
 
+MIRROR = np.array([[1.0, 0, 0], [0, -1, 68], [0, 0, 1]])   # pitch y -> 68 - y: swaps the near and far touchlines
+
+
+def is_mirrored(H, px):
+    """True if H turns the picture into its mirror image on the pitch map, judged around the middle of the clicks `px`.
+    A real camera never does that. It happens when the calibrated goal is on the camera's LEFT: the clicking tool
+    puts that goal at x = 105 and the camera's touchline at y = 34 + width/2, which only fits a goal on its right."""
+    c = np.mean(np.float64(px).reshape(-1, 2), 0)
+    p = to_pitch(H, np.array([c, c + [4.0, 0], c + [0, 4.0]]))
+    return np.linalg.det(np.stack([p[1] - p[0], p[2] - p[0]], 1)) < 0
+
+
+def mirror(obs):
+    """Copy of obs with the near and far touchlines swapped (pitch y -> 68 - y)."""
+    pit = obs.pit * [1, -1] + [0, 68]
+    a, b, c = obs.lco.T
+    lco = np.stack([a, -b, c + 68 * b], 1) + 0.0   # + 0.0 turns -0.0 into 0.0
+    flip = (lco[:, 0] < 0) | ((lco[:, 0] == 0) & (lco[:, 1] < 0))   # same sign convention as line(): a, b >= 0
+    lco[flip] *= -1
+    return Obs(obs.pts, pit, obs.lpx, lco)
+
+
+def unmirror(obs, H):
+    """-> (obs, H, flipped): if the fit shows a mirror image (see is_mirrored), the same clicks with near and far
+    swapped and the matching H. The fit is exactly as good: only which touchline is which changes."""
+    if H is None or not len(obs) or not is_mirrored(H, np.r_[obs.pts, obs.lpx]):
+        return obs, H, False
+    return mirror(obs), MIRROR @ H, True
+
+
 def to_image(H, pit):
     """(k,2) pitch metres -> (k,2) pixels."""
     return to_pitch(np.linalg.inv(H), pit)
@@ -223,4 +253,7 @@ def load(path):
     H = fit(obs, init=np.array(c["H"]) if "H" in c else None)
     if H is None:
         raise SystemExit(f"{path}: these clicks don't pin down the pitch; re-run pipeline.calibrate")
+    _, H, flipped = unmirror(obs, H)
+    if flipped:
+        print(f"  {path} showed the pitch as a mirror image (goal on the camera's left): near and far touchlines swapped")
     return H

@@ -1,0 +1,60 @@
+{
+ "video": "test.mp4",
+ "teams": {
+  "0": "light shirts",
+  "1": "dark shirts"
+ },
+ "reviewed_until": 77.67,
+ "events": [
+  {
+   "t": 2.07,
+   "type": "pass",
+   "team": 1
+  },
+  {
+   "t": 5.49,
+   "type": "turnover",
+   "team": 1
+  },
+  {
+   "t": 14.02,
+   "type": "pass",
+   "team": 0
+  },
+  {
+   "t": 16.26,
+   "type": "pass",
+   "team": 0
+  },
+  {
+   "t": 19.3,
+   "type": "turnover",
+   "team": 0
+  },
+  {
+   "t": 28.91,
+   "type": "pass",
+   "team": 1
+  },
+  {
+   "t": 36.61,
+   "type": "pass",
+   "team": 1
+  },
+  {
+   "t": 42.69,
+   "type": "pass",
+   "team": 1
+  },
+  {
+   "t": 48.09,
+   "type": "pass",
+   "team": 1
+  },
+  {
+   "t": 67.9,
+   "type": "pass",
+   "team": 1
+  }
+ ]
+}

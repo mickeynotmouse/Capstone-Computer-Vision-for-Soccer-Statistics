@@ -21,7 +21,10 @@ pipeline/push.py       tracks.json -> events -> POST to the backend (only struct
 pipeline/synthetic.py  FAKE matches with known ground truth (develop & test with no video)
 backend/               FastAPI + SQLite (swap for Supabase/Postgres later) + aggregation
 frontend/index.html    dashboard: tick any games, get aggregated stats + "where were we standing when a goal was scored"
-scripts/               seed_demo.py (load fake games), inspect_demo.py (check injected vs. detected, writes CSVs)
+experiments/           soccer_models.py: Roboflow players + tiled ball detector vs. the current model, scored on our frames
+scripts/               seed_demo.py (load fake games), inspect_demo.py (check injected vs. detected, writes CSVs),
+                       log_events.py + score_events.py (log real events by hand, score the pipeline against them)
+truth/                 hand-logged events per clip (the answer keys score_events uses)
 tests/                 event detector vs. synthetic ground truth; tracking rules on made-up data (no video needed)
 CLAUDE.md              project context for Claude Code (see below)
 ```
@@ -67,6 +70,20 @@ python -m pipeline.push data/g1_tracks.json --opponent Linfield --venue H --date
 Game names are built for you: home → `vs. Linfield (H)`, away → `at Pacific (A)`.
 `--our-team` is which jersey cluster (0/1) is Willamette – check a few track ids against the video the first time.
 
+## Faster detection with Core ML (optional)
+
+On an Apple Silicon Mac, `--coreml` runs the detector on the Neural Engine: same accuracy, detection about 1.6x faster
+(whole pipeline about 25 % faster, Nov 2026 test on `wide.mp4`). It is OFF unless you add the flag. It needs its own
+Python 3.12 environment, because coremltools doesn't work on Python 3.14 yet (setup: top of `requirements-coreml.txt`).
+
+```bash
+../.venv-coreml/bin/python -m pipeline.track clip.mp4 --calib calib.json --out data/g1_tracks.json --coreml   # on
+python -m pipeline.track clip.mp4 --calib calib.json --out data/g1_tracks.json                                # off
+```
+
+The first run converts the model (about 15 s) and keeps it next to the weights as `yolov8m_<h>x<w>.mlpackage`.
+Everything else (`push`, the backend, the tests) keeps using the normal environment.
+
 ## What is verified vs. not
 
 | Part | Status |
@@ -87,6 +104,9 @@ A *touch* is a run of frames in which one player is the closest to the ball (wit
 - All thresholds are in seconds (not frames), so they behave the same at 10, 25 or 30 fps. They are constants at the top of `events.py`.
 
 Passes are consecutive touches by different players of the same team; a turnover is a consecutive touch by the other team.
+A **deflection** – a touch shorter than 0.5 s by one team, with the other team on the ball right before and after – counts
+as neither: no turnovers, and no pass across it (it wasn't meant for whoever got it). On `test.mp4` this took the false
+turnovers from 8 to 2 without losing a real event (`scripts/score_events.py`, Nov 2026).
 
 ## Real footage: calibrate, track, review
 
@@ -118,6 +138,20 @@ Who is who in `tracks.json`:
 - `others` holds officials (neon shirts), shown as a hollow R in the review video. Fans and people standing still on the
   touchline (coaches, substitutes) are dropped.
 - Team 0 is always the lighter shirt.
+
+## Score the events against what really happened
+
+```bash
+python -m scripts.log_events test.mp4                                    # browser: P/T/S/G + 1 light / 2 dark at each kick
+python -m scripts.score_events truth/test_events.json data/test_tracks.json
+```
+
+`log_events` plays the clip in your browser; press a key the moment the ball is kicked and say which team passed,
+lost the ball, shot or scored (the ball going out of play is not a turnover). It saves as you go to
+`truth/<clip>_events.json`, with how far you've watched: only that part is scored. `score_events` pairs the pipeline's
+events with yours (same type, within 1 s) and prints, per type, how many of yours it found, how many of its own are
+real and whether the team is right, then every miss and false alarm with how much of the ball was really seen around
+it. The `truth/` files are hand-made answer keys: commit them.
 
 ## Known simplifications (the to-do list for real footage)
 

@@ -21,6 +21,13 @@ const config: Config = {
 
   onBrokenLinks: 'throw',
 
+  // The online database the Results page reads (src/pages/results.tsx). Both values are PUBLIC by design: the
+  // publishable key can only read (soccer-cv/backend/supabase_schema.sql). Never put the secret key here.
+  customFields: {
+    supabaseUrl: 'https://etiqqomfogqauyqoyczq.supabase.co',
+    supabasePublishableKey: 'sb_publishable_NKRus4OKbZKo7gUEF9WMPQ_Gze-54xF',
+  },
+
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
@@ -53,6 +60,7 @@ const config: Config = {
     href: '/docs/overview',
   },
   items: [
+    {to: '/results', label: 'Results', position: 'left'},
     {
       href: 'https://github.com/mickeynotmouse/Capstone-Computer-Vision-for-Soccer-Statistics',
       label: 'GitHub',
