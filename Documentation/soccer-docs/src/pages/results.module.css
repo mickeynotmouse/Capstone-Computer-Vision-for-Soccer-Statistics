@@ -1,0 +1,23 @@
+.page { padding-top: 2rem; padding-bottom: 3rem; }
+.lead { color: var(--ifm-color-emphasis-700); max-width: 70ch; }
+.grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--ifm-card-background-color, var(--ifm-background-surface-color));
+        border: 1px solid var(--ifm-color-emphasis-200); border-radius: 10px; padding: 1rem 1.1rem; margin-bottom: 1rem; }
+.h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ifm-color-emphasis-600);
+      margin: 0 0 .75rem; }
+.game { display: flex; gap: .5rem; align-items: flex-start; padding: .35rem 0; cursor: pointer;
+        border-bottom: 1px solid var(--ifm-color-emphasis-200); }
+.game small { display: block; color: var(--ifm-color-emphasis-600); }
+.links { margin-top: .5rem; display: flex; gap: .5rem; }
+.links button { background: none; border: 0; padding: 0; color: var(--ifm-color-primary); cursor: pointer; font: inherit; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .75rem; }
+.stat { border: 1px solid var(--ifm-color-emphasis-200); border-radius: 10px; padding: .7rem .9rem; }
+.stat b { display: block; font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--ifm-color-emphasis-600); font-size: .8rem; }
+.note { color: var(--ifm-color-emphasis-600); font-size: .85rem; margin: .5rem 0 1rem; }
+.controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-bottom: .75rem; }
+.pitch { width: 100%; height: auto; display: block; border-radius: 8px; }
+.tableWrap { overflow-x: auto; }
+.table { width: 100%; display: table; margin: 0; font-variant-numeric: tabular-nums; }
+.table th, .table td { white-space: nowrap; }

@@ -405,13 +405,17 @@ def run(video, calib, out, model_name="yolov8m.pt", stride=1, imgsz=IMGSZ, work=
     t0 = time.time()
     if work:
         os.makedirs(work, exist_ok=True)
-        stamp = {"video": os.path.abspath(video), "size": os.path.getsize(video), "calib_frame": ref_frame,
+        # the video by file name + size, not its full path: moving the project folder mustn't invalidate saved work
+        stamp = {"video": os.path.basename(video), "size": os.path.getsize(video), "calib_frame": ref_frame,
                  "model": model_name, "imgsz": imgsz, "every": every}
         if coreml:
             stamp["coreml"] = True
         old = os.path.join(work, "run.json")
-        if os.path.exists(old) and json.load(open(old)) != stamp:
-            raise SystemExit(f"{work} holds work from a different video or settings: use another --work folder")
+        if os.path.exists(old):
+            prev = json.load(open(old))
+            prev["video"] = os.path.basename(prev.get("video", ""))   # work saved before Nov 2026 kept the full path
+            if prev != stamp:
+                raise SystemExit(f"{work} holds work from a different video or settings: use another --work folder")
         json.dump(stamp, open(old, "w"))
 
     path_file = os.path.join(work, "camera_path.npz") if work else None

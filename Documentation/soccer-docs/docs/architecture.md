@@ -31,9 +31,9 @@ Heavy computation never happens on the hosting provider. Only small, structured 
 | Pitch mapping | Convert pixel positions to real pitch coordinates | Homography estimation |
 | Team separation | Assign players to teams by jersey color | Color clustering |
 | Event detection | Derive shots, passes, goals, saves, and touches from tracked data | Custom logic |
-| Storage | Persist games and events, support aggregation across games | Supabase (Postgres) |
-| API | Serve filtered and aggregated statistics | FastAPI |
-| Dashboard | Filters, visualizations, season-wide views | React + TypeScript, SVG charts |
+| Storage | Persist games and events, support aggregation across games | Supabase (Postgres), see [Database](./database.md) |
+| API | Serve the stored games and events to the website | Supabase's built-in web API (FastAPI for local testing) |
+| Dashboard | Filters, visualizations, season-wide views | Results page on this site: React + TypeScript, SVG charts |
 
 ## Data Flow
 
@@ -46,8 +46,8 @@ In words:
 3. Homography maps pixel positions onto pitch coordinates, and jersey color assigns each player to a team.
 4. Event detection turns the tracks into discrete events such as a shot, a goal, or a pass, each with a timestamp, team, and pitch position.
 5. The structured events are uploaded to Postgres.
-6. The FastAPI backend answers queries such as "all goals in away games" or "pass counts before goals across the season."
-7. The React dashboard renders the results and lets users include or exclude any set of games.
+6. The website's Results page reads the games and events straight from the database, with a key that can only read (see [Database](./database.md)).
+7. It adds up the statistics for whichever games the visitor selects and draws them, so any set of games can be included or excluded.
 
 ## Design Decisions
 
