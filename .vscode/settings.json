@@ -1,0 +1,6 @@
+{
+  // Use the website's own TypeScript (6.x) instead of VS Code's built-in 5.x, which wrongly flags
+  // "ignoreDeprecations": "6.0" in Documentation/soccer-docs/tsconfig.json. Needs `npm install` in that folder.
+  "typescript.tsdk": "Documentation/soccer-docs/node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}
